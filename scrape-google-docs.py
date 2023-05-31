@@ -1,12 +1,12 @@
 from __future__ import print_function
 
 import os.path
+import sys
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/documents.readonly',
@@ -16,7 +16,7 @@ SCOPES = ['https://www.googleapis.com/auth/documents.readonly',
           'https://www.googleapis.com/auth/drive.readonly']
 
 # The ID of a sample document.
-DOCUMENT_ID = '1cGCbZ8j1KPitO5SSsS6rAFMNWffDsgixH7mDQh6ZDu8'
+DOCUMENT_ID = sys.argv[1]
 
 
 def validate_creds():
@@ -40,19 +40,23 @@ def validate_creds():
     return creds
 
 
-def get_comments(document):
-    # Get the document
+def pull_comments(creds):
+    drive = build('drive', 'v3', credentials=creds)
+    comments = drive.comments().list(fileId=DOCUMENT_ID, fields='comments,nextPageToken').execute()
 
+    next_page_token = comments.get('nextPageToken')
 
-    # comments = []
-    #
-    # # Get all the comments
-    # for comment in doc['comments']:
-    #     comment_text = comment['content']
-    #     comments.append(comment_text)
-    #
-    # return comments
-    pass
+    all_comments = []
+
+    while next_page_token:
+        for comment in comments.get('comments'):
+            if not comment["resolved"]:
+                all_comments.append(comment)
+        comments = drive.comments().list(fileId=DOCUMENT_ID, pageToken=next_page_token,
+                                         fields='comments,nextPageToken').execute()
+        next_page_token = comments.get('nextPageToken')
+
+    return all_comments
 
 
 def main():
@@ -63,34 +67,17 @@ def main():
 
     creds = validate_creds()
 
+    all_comments = pull_comments(creds)
+
+    found_comment = None
+    for comment in all_comments:
+        if comment["quotedFileContent"]["value"] == "PROLOGUE":
+            found_comment = comment
+
     # service = build('docs', 'v1', credentials=creds)
     # document = service.documents().get(documentId=DOCUMENT_ID).execute()
 
-    all_comments = []
-
-    drive = build('drive','v3', credentials=creds)
-    comments = drive.comments().list(fileId=DOCUMENT_ID, fields='comments,nextPageToken').execute()
-
-    next_page_token = comments.get('nextPageToken')
-
-    while next_page_token:
-        for comment in comments.get('comments'):
-            if not comment["resolved"]:
-                all_comments.append(comment)
-        comments = drive.comments().list(fileId=DOCUMENT_ID, pageToken=next_page_token,
-                                         fields='comments,nextPageToken').execute()
-        next_page_token = comments.get('nextPageToken')
-
     print()
-    # try:
-    #
-    #
-    #     # Retrieve the documents contents from the Docs service.
-    #
-    #
-    #     print('The title of the document is: {}'.format(document.get('title')))
-    # except HttpError as err:
-    #     print(err)
 
 
 if __name__ == '__main__':
